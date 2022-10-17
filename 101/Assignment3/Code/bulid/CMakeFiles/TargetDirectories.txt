@@ -1,0 +1,3 @@
+/home/cs18/Desktop/Assignment3/Code/bulid/CMakeFiles/rebuild_cache.dir
+/home/cs18/Desktop/Assignment3/Code/bulid/CMakeFiles/Rasterizer.dir
+/home/cs18/Desktop/Assignment3/Code/bulid/CMakeFiles/edit_cache.dir
