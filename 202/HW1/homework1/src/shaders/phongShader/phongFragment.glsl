@@ -83,12 +83,28 @@ void uniformDiskSamples( const in vec2 randomSeed ) {
   }
 }
 
+float adjust() {
+  vec3 lightDir = normalize(uLightPos - vFragPos);
+  vec3 norm = normalize(vNormal);
+  const float standard = 0.001;
+  return standard * (1.0 - abs(dot(lightDir, norm)));
+}
+
 float findBlocker( sampler2D shadowMap,  vec2 uv, float zReceiver ) {
 	return 1.0;
 }
 
 float PCF(sampler2D shadowMap, vec4 coords) {
-  return 1.0;
+  poissonDiskSamples(coords.xy); // build kernal
+
+  float shadow_factor = 0.0;
+  float depth = coords.z;
+  for (int i = 0; i < NUM_SAMPLES; i++) {
+    float block_depth = unpack(texture2D(shadowMap, coords.xy + 0.01 * poissonDisk[i]));
+    shadow_factor += ((block_depth + adjust()) < depth) ? 0.0 : 1.0;
+  }
+
+  return shadow_factor / float(NUM_SAMPLES);
 }
 
 float PCSS(sampler2D shadowMap, vec4 coords){
@@ -108,12 +124,7 @@ float useShadowMap(sampler2D shadowMap, vec4 shadowCoord){
   float depth = shadowCoord.z;
   float block_depth = unpack(texture2D(uShadowMap, shadowCoord.xy));
 
-  vec3 lightDir = normalize(uLightPos - vFragPos);
-  vec3 normal = normalize(vNormal);
-  const float standard = 0.001;
-  float adjust = standard * (1.0 - abs(dot(lightDir, normal)));
-
-  return block_depth + adjust < depth ? 0.0 : 1.0;
+  return (block_depth + adjust()) < depth ? 0.0 : 1.0;
 }
 
 vec3 blinnPhong() {
@@ -145,12 +156,13 @@ void main(void) {
   
   vec3 shadowCoord = vPositionFromLight.xyz * 0.5 + 0.5;
 
-  visibility = useShadowMap(uShadowMap, vec4(shadowCoord, 1.0));
-  //visibility = PCF(uShadowMap, vec4(shadowCoord, 1.0));
+  // visibility = useShadowMap(uShadowMap, vec4(shadowCoord, 1.0));
+  visibility = PCF(uShadowMap, vec4(shadowCoord, 1.0));
   //visibility = PCSS(uShadowMap, vec4(shadowCoord, 1.0));
 
   vec3 phongColor = blinnPhong();
 
-  gl_FragColor = vec4(phongColor * visibility, 1.0);
+  // gl_FragColor = vec4(phongColor * visibility, 1.0);
   // gl_FragColor = vec4(phongColor, 1.0);
+  gl_FragColor = vec4(vec3(visibility), 1.0);
 }

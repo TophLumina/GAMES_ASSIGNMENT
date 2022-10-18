@@ -33,7 +33,7 @@ class DirectionalLight {
         // Projection transform
         var border = 128;
         var z_near = 0.1;
-        var z_far = 400.0;
+        var z_far = 600.0;
         // mat4.identity(projectionMatrix);
         mat4.ortho(projectionMatrix, -border, border, -border, border, z_near, z_far);
 
