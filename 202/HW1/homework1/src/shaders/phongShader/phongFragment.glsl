@@ -90,17 +90,51 @@ float adjust() {
   return standard * (1.0 - abs(dot(lightDir, norm)));
 }
 
-float findBlocker( sampler2D shadowMap,  vec2 uv, float zReceiver ) {
-	return 1.0;
+const float shadowMapRes = 256.0; // Maybe? i can't confirm texture_attachment
+
+float findBlocker( sampler2D shadowMap, vec2 uv, float zReceiver ) {
+	uniformDiskSamples(uv);
+
+  float offset = 0.6 / shadowMapRes;
+  float sum = 0.0;
+  int count = 0;
+  for(int i = 0; i < NUM_SAMPLES; i++) {
+    float block_depth = unpack(texture2D(shadowMap, uv + offset * poissonDisk[i]));
+    if (block_depth + adjust() < zReceiver) {
+      sum += block_depth;
+      count++;
+    }
+  }
+
+  if (count == 0) {
+    return 0.0;
+  }
+
+  return sum / (float(count) + EPS); // no devide by zero
 }
 
 float PCF(sampler2D shadowMap, vec4 coords) {
-  poissonDiskSamples(coords.xy); // build kernal
+  uniformDiskSamples(coords.xy); // build kernal
 
   float shadow_factor = 0.0;
   float depth = coords.z;
+  float offset = 4.0 / shadowMapRes;
   for (int i = 0; i < NUM_SAMPLES; i++) {
-    float block_depth = unpack(texture2D(shadowMap, coords.xy + 0.01 * poissonDisk[i]));
+    float block_depth = unpack(texture2D(shadowMap, coords.xy + offset * poissonDisk[i]));
+    shadow_factor += ((block_depth + adjust()) < depth) ? 0.0 : 1.0;
+  }
+
+  return shadow_factor / float(NUM_SAMPLES);
+}
+
+float PCF_adptive(sampler2D shadowMap, vec4 coords, float fliter_size) {
+  uniformDiskSamples(coords.xy); // build kernal
+
+  float shadow_factor = 0.0;
+  float depth = coords.z;
+  float offset = 2.0 / shadowMapRes * fliter_size;
+  for (int i = 0; i < NUM_SAMPLES; i++) {
+    float block_depth = unpack(texture2D(shadowMap, coords.xy + offset * poissonDisk[i]));
     shadow_factor += ((block_depth + adjust()) < depth) ? 0.0 : 1.0;
   }
 
@@ -110,13 +144,17 @@ float PCF(sampler2D shadowMap, vec4 coords) {
 float PCSS(sampler2D shadowMap, vec4 coords){
 
   // STEP 1: avgblocker depth
+  float avgblocker_depth = findBlocker(shadowMap, coords.xy, coords.z);
+  if (avgblocker_depth < EPS)
+    return 1.0;
 
   // STEP 2: penumbra size
+  float fliter_size = 2.0 * (coords.z - avgblocker_depth) / avgblocker_depth;
 
   // STEP 3: filtering
+  float shadow = PCF_adptive(shadowMap, coords, fliter_size);
   
-  return 1.0;
-
+  return shadow;
 }
 
 
@@ -157,12 +195,12 @@ void main(void) {
   vec3 shadowCoord = vPositionFromLight.xyz * 0.5 + 0.5;
 
   // visibility = useShadowMap(uShadowMap, vec4(shadowCoord, 1.0));
-  visibility = PCF(uShadowMap, vec4(shadowCoord, 1.0));
-  //visibility = PCSS(uShadowMap, vec4(shadowCoord, 1.0));
+  // visibility = PCF(uShadowMap, vec4(shadowCoord, 1.0));
+  visibility = PCSS(uShadowMap, vec4(shadowCoord, 1.0));
 
   vec3 phongColor = blinnPhong();
 
-  // gl_FragColor = vec4(phongColor * visibility, 1.0);
+  gl_FragColor = vec4(phongColor * visibility, 1.0);
   // gl_FragColor = vec4(phongColor, 1.0);
-  gl_FragColor = vec4(vec3(visibility), 1.0);
+  // gl_FragColor = vec4(vec3(visibility), 1.0);
 }
