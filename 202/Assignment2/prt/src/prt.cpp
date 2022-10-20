@@ -213,10 +213,11 @@ public:
         // Projection transport
         m_TransportSHCoeffs.resize(SHCoeffLength, mesh->getVertexCount());
         fout << mesh->getVertexCount() << std::endl;
-        for (int i = 0; i < mesh->getVertexCount(); i++)
+        for (int i = 0; i < mesh->getVertexCount(); i++) //for each vertex
         {
             const Point3f &v = mesh->getVertexPositions().col(i);
             const Normal3f &n = mesh->getVertexNormals().col(i);
+
             auto shFunc = [&](double phi, double theta) -> double {
                 Eigen::Array3d d = sh::ToVector(phi, theta);
                 const auto wi = Vector3f(d.x(), d.y(), d.z());
@@ -225,13 +226,28 @@ public:
                     // TODO: here you need to calculate unshadowed transport term of a given direction
                     // TODO: 此处你需要计算给定方向下的unshadowed传输项球谐函数值
 
-                    
+                    auto transport_un = wi.dot(n);
+                    if (transport_un > 0)
+                    {
+                        return transport_un;
+                    }
                     return 0;
                 }
                 else
                 {
                     // TODO: here you need to calculate shadowed transport term of a given direction
                     // TODO: 此处你需要计算给定方向下的shadowed传输项球谐函数值
+
+                    auto transport_sh = wi.dot(n);
+                    if (transport_sh > 0) {
+                        Ray3f detect_ray(v, wi);
+                        if(scene->rayIntersect(detect_ray)) // blocked
+                        {
+                            return 0;
+                        } else {
+                            return transport_sh;
+                        }
+                    }
                     return 0;
                 }
             };
@@ -244,6 +260,69 @@ public:
         if (m_Type == Type::Interreflection)
         {
             // TODO: leave for bonus
+
+            MatrixXf intr_TransportSHCoeffs = MatrixXf(); // container for Coeffs
+            intr_TransportSHCoeffs.resize(SHCoeffLength, mesh->getVertexCount());
+
+
+            for (int i = 0; i < mesh->getVertexCount(); i++)
+            {
+                const Point3f &v = mesh->getVertexPositions().col(i);
+                const Normal3f &n = mesh->getVertexNormals().col(i);
+
+                const int sampler_side = static_cast<int>(floor(sqrt(m_SampleCount)));
+                std::random_device rd;
+                std::mt19937 gen(rd());
+                std::uniform_real_distribution<> rng(0.0, 1.0);
+
+                // secondary shading point SHCoeffs container
+                std::vector<double> coeffs(SHCoeffLength, 0.0);
+                coeffs.assign(sh::GetCoefficientCount(SHOrder), 0.0);
+
+                for (int t = 0; t < sampler_side; t++)
+                {
+                    for (int p = 0; p < sampler_side; p++)
+                    {
+                        double alpha = (t + rng(gen)) / sampler_side;
+                        double beta = (p + rng(gen)) / sampler_side;
+
+                        double phi = 2.0 * M_PI * beta;
+                        double theta = acos(2.0 * alpha - 1.0);
+
+                        // origin func value
+                        Eigen::Array3d d = sh::ToVector(phi, theta);
+                        const auto wi = Vector3f(d.x(), d.y(), d.z());
+
+                        auto transport_sh = wi.dot(n);
+                        if (transport_sh > 0)
+                        {
+                            Ray3f primary_ray(v, wi);
+                            if(scene->rayIntersect(primary_ray)) // find the secondary shading point
+                            {
+                                Intersection its;
+                                scene->getAccel()->rayIntersect(primary_ray, its, false);
+
+                                // sum up the SHCoeffs of the nearest 3 vertex
+                                // and add up by barycoords as the SHCoeff of the secondary shading point
+
+                                std::vector<float> coeff(SHCoeffLength, 0.0);
+
+                                for (int i = 0; i < SHCoeffLength; i++)
+                                {
+                                    Vector3f tmp(m_TransportSHCoeffs.col((int)its.tri_index.x()).coeffRef(i),
+                                                 m_TransportSHCoeffs.col((int)its.tri_index.y()).coeffRef(i),
+                                                 m_TransportSHCoeffs.col((int)its.tri_index.z()).coeffRef(i)
+                                                 );
+
+                                    coeff[i] = tmp.dot(its.bary);
+                                }
+
+                                
+                            }
+                        }
+                    }
+                }
+            }
         }
 
         // Save in face format
