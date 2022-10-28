@@ -80,11 +80,11 @@ Vec3f IntegrateEmu(Vec3f V, float roughness, float NdotV, Vec3f Ei) {
 
         // TODO: To calculate Eavg here
 
-        // diff 2 * [0 - 1] E(u) * u du Bug?
-        Eavg += Ei * dot(N, L) * 2.f;
+        // diff 2 * [0 - 1] (E(u) * u) <EMU loss infomation on low roughness levels>
+        Eavg += Ei * NoL;
     }
 
-    return Eavg / sample_count;
+    return Eavg * 2.f / sample_count;
 }
 
 
