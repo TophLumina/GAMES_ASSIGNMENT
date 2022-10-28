@@ -31,7 +31,7 @@ samplePoints squareToCosineHemisphere(int sample_count){
             double sampley = (p + rng(gen)) / sample_side;
             
             double theta = 0.5f * acos(1 - 2*samplex);
-            double phi =  2 * M_PI * sampley;
+            double phi =  2 * PI * sampley;
             Vec3f wi = Vec3f(sin(theta) * cos(phi), sin(theta) * sin(phi), cos(theta));
             float pdf = wi.z / PI;
             
@@ -73,6 +73,10 @@ float GeometrySmith(float roughness, float NoV, float NoL) {
     return ggx1 * ggx2;
 }
 
+float FresnelSchlick(float radience, float NoV) {
+    return (NoV > 0) ? radience + (1 - radience) * pow((1 - NoV), 5) : 0.f;
+}
+
 Vec3f IntegrateBRDF(Vec3f V, float roughness, float NdotV) {
     float A = 0.0;
     float B = 0.0;
@@ -83,7 +87,21 @@ Vec3f IntegrateBRDF(Vec3f V, float roughness, float NdotV) {
     samplePoints sampleList = squareToCosineHemisphere(sample_count);
     for (int i = 0; i < sample_count; i++) {
       // TODO: To calculate (fr * ni) / p_o here
-      
+
+      Vec3f in_dir = sampleList.directions.at(i);
+      Vec3f half_vec = normalize(V + in_dir);
+      float GGX = DistributionGGX(N, half_vec, roughness);
+      float SMITH = GeometrySmith(roughness, NdotV, dot(in_dir, N));
+    //   float FRESNEL = FresnelSchlick(GGX * SMITH, NdotV);
+    // we are evaluating the energe lost in multi_reflaction so the Fresnel term should be always 1 to perform full reflaction
+      float FRESNEL = GGX * SMITH;
+
+      float PARTITION = FRESNEL / (4 * dot(in_dir, N) * NdotV);
+      PARTITION /= sampleList.PDFs.at(i);
+
+      A += PARTITION;
+      B += PARTITION;
+      C += PARTITION;
     }
 
     return {A / sample_count, B / sample_count, C / sample_count};
