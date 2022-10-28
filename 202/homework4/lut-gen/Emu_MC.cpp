@@ -91,12 +91,12 @@ Vec3f IntegrateBRDF(Vec3f V, float roughness, float NdotV) {
       Vec3f in_dir = sampleList.directions.at(i);
       Vec3f half_vec = normalize(V + in_dir);
       float GGX = DistributionGGX(N, half_vec, roughness);
-      float SMITH = GeometrySmith(roughness, NdotV, dot(in_dir, N));
-    //   float FRESNEL = FresnelSchlick(GGX * SMITH, NdotV);
+      float GEO = GeometrySmith(roughness, NdotV, dot(in_dir, N));
+    //   float FRESNEL = FresnelSchlick(GGX * GEO, NdotV);
     // we are evaluating the energe lost in multi_reflaction so the Fresnel term should be always 1 to perform full reflaction
-      float FRESNEL = GGX * SMITH;
 
-      float PARTITION = FRESNEL / (4 * dot(in_dir, N) * NdotV);
+    //   float PARTITION = GGX * GEO * dot(in_dir, N) * 1.f / (4.f * NdotV * dot(in_dir, N));
+      float PARTITION = GGX * GEO * 1.f / (4.f * NdotV); // Remove the dot(L, N) cause the PDF(1/2*PI) of the costheta is uniform on Hemisphere
       PARTITION /= sampleList.PDFs.at(i);
 
       A += PARTITION;
