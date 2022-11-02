@@ -15,6 +15,25 @@ void Denoiser::Reprojection(const FrameInfo &frameInfo) {
             // TODO: Reproject
             m_valid(x, y) = false;
             m_misc(x, y) = Float3(0.f);
+
+            Float3 pre_pos = frameInfo.m_position(x, y);
+            int pre_id = (int)frameInfo.m_id(x, y);
+            
+            if (pre_id >= 0) {
+                Matrix4x4 back_proj = frameInfo.m_matrix[pre_id];
+                back_proj = Inverse(back_proj);
+                back_proj = m_preFrameInfo.m_matrix[pre_id] * back_proj;
+                back_proj = preWorldToScreen * back_proj;
+
+                pre_pos = back_proj(pre_pos, Float3::EType::Point);
+
+                if (pre_pos.x >= 0 && pre_pos.x < width && pre_pos.y >= 0 && pre_pos.y < height) {
+                    if ((int)m_preFrameInfo.m_id(pre_pos.x,pre_pos.y) == pre_id) {
+                        m_valid(x, y) = true;
+                        m_misc(x, y) = m_accColor(pre_pos.x, pre_pos.y);
+                    }
+                }
+            }
         }
     }
     std::swap(m_misc, m_accColor);
@@ -28,6 +47,9 @@ void Denoiser::TemporalAccumulation(const Buffer2D<Float3> &curFilteredColor) {
     for (int y = 0; y < height; y++) {
         for (int x = 0; x < width; x++) {
             // TODO: Temporal clamp
+
+            
+
             Float3 color = m_accColor(x, y);
             // TODO: Exponential moving average
             float alpha = 1.0f;
@@ -46,7 +68,45 @@ Buffer2D<Float3> Denoiser::Filter(const FrameInfo &frameInfo) {
     for (int y = 0; y < height; y++) {
         for (int x = 0; x < width; x++) {
             // TODO: Joint bilateral filter
-            filteredImage(x, y) = frameInfo.m_beauty(x, y);
+
+            Float3 tmp_result(0.f);
+            float weight = 0.f;
+
+            for (int i = -kernelRadius; i <= kernelRadius; ++i) {
+                for (int j = -kernelRadius; j <= kernelRadius; ++j) {
+                    int coord_x = x + i;
+                    int coord_y = y + j;
+
+                    if (coord_x >= 0 && coord_x <= width && coord_y >= 0 && coord_y <= height) {
+                        float meta_pos =
+                            SqrLength(Float3(i, j, 0.f)) / (2.f * Sqr(m_sigmaCoord));
+                        float meta_col =
+                            SqrDistance(frameInfo.m_beauty(x, y),
+                                        frameInfo.m_beauty(coord_x, coord_y)) /
+                            (2.f * Sqr(m_sigmaColor));
+                        float meta_norm =
+                            Sqr(SafeAcos(Dot(frameInfo.m_normal(x, y),
+                                             frameInfo.m_normal(coord_x, coord_y)))) /
+                            (2.f * Sqr(m_sigmaNormal));
+                        float meta_plane =
+                            Sqr(std::max(
+                                Dot(frameInfo.m_normal(x, y),
+                                    Normalize(frameInfo.m_position(coord_x, coord_y) -
+                                              frameInfo.m_position(x, y))),
+                                0.f)) /
+                            (2.f * Sqr(m_sigmaPlane));
+
+                        float factor =
+                            expf(-meta_pos - meta_col - meta_norm - meta_plane);
+
+                        filteredImage(x, y) += frameInfo.m_beauty(x, y) * factor;
+                        weight += factor;
+                    }
+                }
+            }
+            // filteredImage(x, y) = frameInfo.m_beauty(x, y);
+
+            filteredImage(x, y) /= weight;
         }
     }
     return filteredImage;
